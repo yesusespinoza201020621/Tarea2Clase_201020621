@@ -1,0 +1,320 @@
+.data
+.align 3
+// son mis datos implemente lo que tenia de mis tareas anterior 
+encabezado1:  .asciz "Probador Automatico de Circuitos Integrados — Tarea 2\n"
+len_enc1 = . - encabezado1
+
+encabezado2:  .asciz "Estudiante: Yesus Rudy Espinoza Pivaral 201020621\n"
+len_enc2 = . - encabezado2
+
+encabezado3:  .asciz "Ing. Otto Escobar Leiva\nAuxiliar: Diego Josue Guevarra - ACYE1\n\n"
+len_enc3 = . - encabezado3
+
+msg_prompt:     .asciz "ingrese el tipo de compuerta, solo los ultimos dos digitos (00,08,27 o 32) o 'exit': "
+len_prompt = . - msg_prompt
+
+msg_ok:         .asciz "IC OK\n"
+len_ok = . - msg_ok
+
+msg_mal:        .asciz "IC MAL\n"
+len_mal = . - msg_mal
+
+msg_danada1:    .asciz "compuera numero 1 dañada\n"
+len_danada = . - msg_danada1
+msg_danada2:    .asciz "compuera numero 2 dañada\n"
+msg_danada3:    .asciz "compuera numero 3 dañada\n"
+msg_danada4:    .asciz "compuera numero 4 dañada\n"
+
+msg_invalido:   .asciz "Código no válido. Intente con 00, 08, 27, 32 o salir con exit.\n"
+len_invalido = . - msg_invalido
+
+// Tablas de vectores para 7400, 7408 y 7432 (4 combinaciones simultáneas: 00, 01, 10, 11)
+vec_2in:        .hword 0x000, 0x489, 0x912, 0xD9B
+
+// diagrama de salidas esperadas en (D9, D6, D5, D0) -> máscara de salidas = 0x261 repaso de orga
+exp_7400:       .hword 0x261, 0x261, 0x261, 0x000  // NAND: 1, 1, 1, 0
+exp_7408:       .hword 0x000, 0x000, 0x000, 0x261  // AND:  0, 0, 0, 1
+exp_7432:       .hword 0x000, 0x261, 0x261, 0x261  // OR:   0, 1, 1, 1
+
+// Tablas de vectores para 7427 (Triple NOR 3 entradas: 000, 001, 010, 100, 111)
+vec_7427:       .hword 0x000, 0x085, 0x508, 0xA10, 0xF9D
+// Salidas esperadas en (D6, D5, D1) -> máscara de salidas = 0x062
+exp_7427:       .hword 0x062, 0x000, 0x000, 0x000, 0x000
+
+.bss
+.align 3
+buffer:         .skip 16
+
+.text
+.global _start
+//el main principal de toda la vida
+_start:
+    stp     x29, x30, [sp, #-16]!   // Resguardo reglamentario de la pila (Capítulo 5)
+    mov     x29, sp
+
+    // Mostrar el bloque completo de tus datos en la consola al arrancar
+    mov     x0, #1                  // fd = 1 (stdout)
+    ldr     x1, =encabezado1
+    mov     x2, #len_enc1
+    mov     x8, #64                 // syscall write
+    svc     #0
+
+    mov     x0, #1                  
+    ldr     x1, =encabezado2
+    mov     x2, #len_enc2
+    mov     x8, #64                 
+    svc     #0
+
+    mov     x0, #1                  
+    ldr     x1, =encabezado3
+    mov     x2, #len_enc3
+    mov     x8, #64                 
+    svc     #0
+
+bucle_principal:
+    // 1. Mostrar mensaje solicitando el tipo de compuerta (Requisito 1)
+    mov     x0, #1                  
+    ldr     x1, =msg_prompt
+    mov     x2, #len_prompt
+    mov     x8, #64                 
+    svc     #0
+
+    // 2. Monitorear teclado esperando la entrada (Requisito 2)
+    mov     x0, #0                  // fd = 0 (stdin)
+    ldr     x1, =buffer
+    mov     x2, #16                 
+    mov     x8, #63                 // syscall read
+    svc     #0
+
+    // Validación de seguridad para búfer vacío
+    cmp     x0, #2
+    b.lt    bucle_principal
+
+    // 3. PARSING POR HARDWARE (Capítulo 2 y 4)
+    ldr     x1, =buffer
+    ldrb    w2, [x1]                // Primer dígito ASCII escrito
+    ldrb    w3, [x1, #1]            // Segundo dígito ASCII escrito
+
+    // filtro de control: Ipara la salida ('exit') ---
+    cmp     w2, #'e'
+    b.ne    .L_procesar_codigos
+    cmp     w3, #'x'
+    b.eq    .L_finalizar_programa   // Rompe el bucle de forma síncrona
+
+.L_procesar_codigos:
+    lsl     w2, w2, #8
+    orr     w10, w2, w3             // W10 contiene el código ASCII par (ej. "00" = 0x3030)
+
+    // Identificar cuál compuerta se seleccionó mediante empaquetado de registros
+    mov     w11, #0x3030            // "00" -> 7400
+    cmp     w10, w11
+    b.eq    configurar_7400
+
+    mov     w11, #0x3038            // "08" -> 7408
+    cmp     w10, w11
+    b.eq    configurar_7408
+
+    mov     w11, #0x3332            // "32" -> 7432
+    cmp     w10, w11
+    b.eq    configurar_7432
+
+    mov     w11, #0x3237            // "27" -> 7427
+    cmp     w10, w11
+    b.eq    configurar_7427
+
+    // Si ingresó una cadena inválida, muestra la alerta de error y cicla
+    mov     x0, #1
+    ldr     x1, =msg_invalido
+    mov     x2, #len_invalido
+    mov     x8, #64
+    svc     #0
+    b       bucle_principal
+
+.L_finalizar_programa:
+    // función para salir con el comando exit
+    mov     x0, #0                  // Estado de retorno exitoso (0)
+    mov     x8, #93                 // Syscall 93 = sys_exit
+    svc     #0                      
+
+
+// configuración de compuertas de 2 entradas (7400, 7408, 7432)
+
+configurar_7400:
+    ldr     x21, =exp_7400
+    b       probar_4_compuertas
+
+configurar_7408:
+    ldr     x21, =exp_7408
+    b       probar_4_compuertas
+
+configurar_7432:
+    ldr     x21, =exp_7432
+
+probar_4_compuertas:
+    ldr     x20, =vec_2in           // Puntero a los vectores de excitación
+    mov     w22, #0                 // W22 = Máscara acumuladora de fallos (bits 0..3)
+    mov     w23, #0                 // W23 = Índice de prueba (0 a 3)
+
+loop_4_compuertas:
+    // 1. Cargar la excitación correspondiente usando direccionamiento escalado (Capítulo 3)
+    ldrh    w0, [x20, x23, lsl #1]  
+    
+    // 2. Ejecutar la subrutina de retardo por hardware de 10ms
+    bl      excitar_y_esperar_10ms   
+
+    // 3. logico y examen de bits mediante xor 
+    ldrh    w24, [x21, x23, lsl #1] // W24 = Salida esperada de la tabla de verdad
+    eor     w25, w0, w24            // XOR: Si los bits difieren, el bit se enciende indicando error
+
+    // Verificar Compuerta 1 (Pin 3 = Bit D9)
+    tst     w25, #(1 << 9)
+    b.eq    check_g2
+    orr     w22, w22, #0b0001       // Registra fallo en Compuerta 1
+
+check_g2:
+    // Verificar Compuerta 2 (Pin 6 = Bit D6)
+    tst     w25, #(1 << 6)
+    b.eq    check_g3
+    orr     w22, w22, #0b0010       // Registra fallo en Compuerta 2
+
+check_g3:
+    // Verificar Compuerta 3 (Pin 8 = Bit D5)
+    tst     w25, #(1 << 5)
+    b.eq    check_g4
+    orr     w22, w22, #0b0100       // Registra fallo en Compuerta 3
+
+check_g4:
+    // ¡CORREGIDO PERECTO! Verificar Compuerta 4 (Pin 13 = Bit D0) según el diagrama exacto
+    tst     w25, #(1 << 0)
+    b.eq    sig_iter_4
+    orr     w22, w22, #0b1000       // Registro fallo en Compuerta 4
+
+sig_iter_4:
+    add     w23, w23, #1
+    cmp     w23, #4
+    b.lt    loop_4_compuertas       
+
+    mov     w26, #0b1111            // Patrón de daño total para 4 compuertas
+    b       evaluar_resultados
+
+
+// condiguración de compuerta triple de 3 entradas(7427)
+configurar_7427:
+    ldr     x20, =vec_7427
+    ldr     x21, =exp_7427
+    mov     w22, #0                 // W22 = Máscara acumuladora de fallos (bits 0..2)
+    mov     w23, #0                 // W23 = Índice de prueba (0 a 4)
+
+loop_3_compuertas:
+    ldrh    w0, [x20, x23, lsl #1]  
+    
+    bl      excitar_y_esperar_10ms   
+
+    ldrh    w24, [x21, x23, lsl #1]
+    eor     w25, w0, w24
+
+    // Verificar Compuerta 1 (Pin 6 = Bit D6)
+    tst     w25, #(1 << 6)
+    b.eq    check_27_g2
+    orr     w22, w22, #0b001        // Registra fallo en Compuerta 1
+
+check_27_g2:
+    // Verificar Compuerta 2 (Pin 8 = Bit D5)
+    tst     w25, #(1 << 5)
+    b.eq    check_27_g3
+    orr     w22, w22, #0b010        // Registra fallo en Compuerta 2
+
+check_27_g3:
+    // Verificar Compuerta 3 (Pin 12 = Bit D1)
+    tst     w25, #(1 << 1)
+    b.eq    sig_iter_3
+    orr     w22, w22, #0b100        // Registra fallo en Compuerta 3
+
+sig_iter_3:
+    add     w23, w23, #1
+    cmp     w23, #5
+    b.lt    loop_3_compuertas       
+
+    mov     w26, #0b111             // Patrón de daño total para 3 compuertas (Ajuste 7427)
+
+// evaluamos Y monstramos (requisito 4)
+
+evaluar_resultados:
+    // Caso 1: Ninguna compuerta falló (W22 == 0) -> IC OK
+    cmp     w22, #0
+    b.ne    verificar_daño_total
+    mov     x0, #1
+    ldr     x1, =msg_ok
+    mov     x2, #len_ok
+    mov     x8, #64
+    svc     #0
+    b       bucle_principal           
+
+verificar_daño_total:
+    // Caso 2: Todas las compuertas fallaron (W22 == W26) -> IC MAL
+    cmp     w22, w26
+    b.ne    mostrar_daño_parcial
+    mov     x0, #1
+    ldr     x1, =msg_mal
+    mov     x2, #len_mal
+    mov     x8, #64
+    svc     #0
+    b       bucle_principal           
+
+mostrar_daño_parcial:
+    // Caso 3: Daño parcial (Imprimir cada alerta requerida por hardware)
+    tst     w22, #0b0001
+    b.eq    rev_parcial_2
+    mov     x0, #1
+    ldr     x1, =msg_danada1
+    mov     x2, #len_danada
+    mov     x8, #64
+    svc     #0
+
+rev_parcial_2:
+    tst     w22, #0b0010
+    b.eq    rev_parcial_3
+    mov     x0, #1
+    ldr     x1, =msg_danada2
+    mov     x2, #len_danada
+    mov     x8, #64
+    svc     #0
+
+rev_parcial_3:
+    tst     w22, #0b0100
+    b.eq    rev_parcial_4
+    mov     x0, #1
+    ldr     x1, =msg_danada3
+    mov     x2, #len_danada
+    mov     x8, #64
+    svc     #0
+
+rev_parcial_4:
+    tst     w22, #0b1000
+    b.eq    fin_evaluacion
+    mov     x0, #1
+    ldr     x1, =msg_danada4
+    mov     x2, #len_danada
+    mov     x8, #64
+
+svc     #0
+fin_evaluacion:
+b       bucle_principal           // INCISO 5: Retornar al inciso 1 indefinidamente
+
+// subrutina: sincrono de 10 milisegundos (requisito 3 ver enunciado)
+excitar_y_esperar_10ms:
+stp     x29, x30, [sp, #-16]!     // Resguarda el marco de llamada
+mov     x29, sp
+// Retardo por ciclos para simular el retardo físico sin colgar el emulador
+mov     x2, #0x250000
+.L_delay_10ms_pure:
+subs    x2, x2, #1
+cbnz    x2, .L_delay_10ms_pure
+// simulación de respuesta del hardware.
+ldrh    w9, [x21, x23, lsl #1]
+orr     w0, w0, w9              // Fusiona entradas excitadas + salidas en X0
+//  Para forzar el fallo de la compuerta 4, descomenta abajo:
+
+ //eor     w0, w0, #(1 << 0)      // Invierte el bit D0 (Falla compuerta 4)
+ldp     x29, x30, [sp], #16
+ret
