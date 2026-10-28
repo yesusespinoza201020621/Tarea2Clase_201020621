@@ -67,3 +67,8 @@ El sistema embebido incluye un banco de pruebas interactivo que valida el compor
 * **Daño Parcial:** Al descomentar la línea de depuración de cortocircuito (`eor w0, w0, #(1 << 0)`), el enmascaramiento por hardware aísla el pin defectuoso y el intérprete notifica dinámicamente el fallo específico (ej: `COMPUERTA 4 DAÑADA`).
 * **Exit:** Al ingresar el comando de escape `exit`, la CPU interrumpe el bucle indefinido y cierra el programa limpiamente sin causar fallos de segmentación.
 # Tarea2Clase_201020621
+
+### 📺 Resultados en Consola (`sys_write`)
+A continuación se muestra la salida limpia del programa en el entorno QEMU ARM64, como queda el proyecto2 al final compilado desde visual studio code en linux ubuntu.
+
+![Ejecución Correcta](tarea2clase_201020621_funcionamiento.png)
