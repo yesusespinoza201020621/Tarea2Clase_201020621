@@ -8,7 +8,7 @@
 * **Escuela:** Ciencias y Sistemas
 * **Curso:** Arquitectura de Computadores y Ensambladores 1
 * **Catedrático:** Ing. Otto Escobar Leiva
-* **Sección de Laboratorio:** A
+* **Sección de Laboratorio:** B
 * **Auxiliar:** Diego Josue Guevarra
 
 ---
